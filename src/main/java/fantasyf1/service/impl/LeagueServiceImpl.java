@@ -78,7 +78,7 @@ public class LeagueServiceImpl implements LeagueService {
 		final List<EventResult> results = eventService.getSeasonResults();
 		resetAllScores(teams);
 		for (final EventResult result : results) {
-			calculateResult(result, teams);
+			calculateResult(result);
 		}
 		LOG.info("Scores recalculated.");
 	}
@@ -251,8 +251,7 @@ public class LeagueServiceImpl implements LeagueService {
 		scorer.setPointsPerEvent(new LinkedHashMap<Integer, Integer>());
 	}
 
-	private synchronized void calculateResult(final EventResult result,
-			final List<Team> teams) {
+	private synchronized void calculateResult(final EventResult result) {
 		final List<Driver> drivers = componentService.findDriversByStandin(false);
 		final List<Driver> standinDrivers = componentService.findDriversByStandin(true);
 		final List<Car> cars = componentService.findAllCars();
@@ -293,18 +292,17 @@ public class LeagueServiceImpl implements LeagueService {
 				
 				if (pos.isClassified()) {
 					add(driver.getPointsPerEvent(), result.getRound(), rules.getDriverRacePoints().get(pos.getPosition()));				
-					driver.setTotalPoints(driver.getTotalPoints() + rules.getDriverRacePoints().get(pos.getPosition()));
+					driver.setTotalPoints(driver.getTotalPoints() + rules.getDriverRacePoints().get(pos.getPosition()));					
+					add(car.getPointsPerEvent(), result.getRound(), rules.getCarRacePoints().get(pos.getPosition()));				
+					car.setTotalPoints(car.getTotalPoints() + rules.getCarRacePoints().get(pos.getPosition()));				
+					add(engine.getPointsPerEvent(), result.getRound(), rules.getEngineRacePoints().get(pos.getPosition()));
+					engine.setTotalPoints(engine.getTotalPoints() + rules.getEngineRacePoints().get(pos.getPosition()));
 					
 					if(result.getFastestLapDriver().getNumber() == pos.getDriverNumber()) {
 						driver.setFastestLaps(driver.getFastestLaps() + 1);
 						add(driver.getPointsPerEvent(), result.getRound(), rules.getFastestLapBonus());				
 						driver.setTotalPoints(driver.getTotalPoints() + rules.getFastestLapBonus());
 					}
-					
-					add(car.getPointsPerEvent(), result.getRound(), rules.getCarRacePoints().get(pos.getPosition()));				
-					car.setTotalPoints(car.getTotalPoints() + rules.getCarRacePoints().get(pos.getPosition()));				
-					add(engine.getPointsPerEvent(), result.getRound(), rules.getEngineRacePoints().get(pos.getPosition()));
-					engine.setTotalPoints(engine.getTotalPoints() + rules.getEngineRacePoints().get(pos.getPosition()));
 					
 					add(numCarsFinished, car.getName(), 1);
 					if(numCarsFinished.get(car.getName()) == 2) {
