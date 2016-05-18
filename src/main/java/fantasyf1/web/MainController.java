@@ -100,7 +100,7 @@ public class MainController {
 		result.setFastestLapDriver(componentService.findDriverByName(result
 				.getFastestLapDriver().getName()));
 		eventService.save(result);
-		leagueService.recalculateAllResults();
+		leagueService.recalculateAllResults(teamService.findAll());
 		final EventResult savedResult = eventService.findByRound(result
 				.getRound());
 		savedResult.setRemarks(result.getRemarks());

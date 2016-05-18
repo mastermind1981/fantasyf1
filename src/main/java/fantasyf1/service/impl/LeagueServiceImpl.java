@@ -61,7 +61,7 @@ public class LeagueServiceImpl implements LeagueService {
 		final List<Team> teams = teamService.findAll();
 
 		if (refreshResultsOnPageLoad && eventService.checkForNewResults(true)) {
-			calculateAllResults(teams);
+			recalculateAllResults(teams);
 		}
 
 		Collections.sort(teams);
@@ -69,11 +69,7 @@ public class LeagueServiceImpl implements LeagueService {
 	}
 
 	@Override
-	public synchronized void recalculateAllResults() {
-		calculateAllResults(teamService.findAll());
-	}
-
-	private synchronized void calculateAllResults(final List<Team> teams) {
+	public synchronized void recalculateAllResults(final List<Team> teams) {
 		LOG.info("Recalculating scores...");
 		final List<EventResult> results = eventService.getSeasonResults();
 		resetAllScores(teams);
@@ -84,6 +80,7 @@ public class LeagueServiceImpl implements LeagueService {
 	}
 
 	private void calculateBestTheoreticalTeam(final EventResult result) {
+		LOG.info("Calculating best theoretical team for " + result.getVenue());
 		final List<Driver> allDrivers = componentService
 				.findDriversByStandin(false);
 		final List<Car> cars = componentService.findAllCars();
@@ -250,8 +247,78 @@ public class LeagueServiceImpl implements LeagueService {
 		scorer.setTotalPoints(0);
 		scorer.setPointsPerEvent(new LinkedHashMap<Integer, Integer>());
 	}
+	
+	@Override
+	public void updateTotals() {
+		final List<Driver> drivers = componentService.findDriversByStandin(false);		
+		final List<Car> cars = componentService.findAllCars();
+		final List<Engine> engines = componentService.findAllEngines();
+		final List<Team> teams = teamService.findAll();
+		
+		for(Driver driver : drivers) {
+			sumTotal(driver);
+		}
+		for(Car car : cars) {
+			sumTotal(car);
+		}
+		for(Engine engine : engines) {
+			sumTotal(engine);
+		}
+		for(Team team : teams) {
+			sumTotal(team);
+			teamService.saveTeamNoValidation(team);
+		}
 
-	private synchronized void calculateResult(final EventResult result) {
+		final TheoreticalTeam res = teamService
+				.findTheoreticalTeamByName(bestTheoreticalTeamName);
+
+		if (res != null) {
+			res.reset();
+			teamService.saveTheoreticalTeam(res);
+			if(!eventService.getSeasonResults().isEmpty()) {
+				calculateResult(eventService.getSeasonResults().get(0));
+			}
+		}
+		componentService.saveDrivers(drivers, true);
+		componentService.saveCars(cars, true);
+		componentService.saveEngines(engines, true);
+		
+	}
+	
+	@Override
+	public void deletePointsForRound(int round) {
+		final List<Driver> drivers = componentService.findDriversByStandin(false);		
+		final List<Car> cars = componentService.findAllCars();
+		final List<Engine> engines = componentService.findAllEngines();
+		final List<Team> teams = teamService.findAll();
+		
+		for(Driver driver : drivers) {
+			driver.getPointsPerEvent().put(round, 0);
+			sumTotal(driver);
+		}
+		for(Car car : cars) {
+			car.getPointsPerEvent().put(round, 0);
+			sumTotal(car);
+		}
+		for(Engine engine : engines) {
+			engine.getPointsPerEvent().put(round, 0);
+			sumTotal(engine);
+		}
+		for(Team team : teams) {
+			team.getPointsPerEvent().put(round, 0);
+			sumTotal(team);
+		}
+	}
+	
+	private void sumTotal(PointScorer scorer) {
+		scorer.setTotalPoints(0);
+		for(Integer score : scorer.getPointsPerEvent().values()) {
+			scorer.setTotalPoints(scorer.getTotalPoints() + score);
+		}
+	}
+
+	@Override
+	public synchronized void calculateResult(final EventResult result) {
 		final List<Driver> drivers = componentService.findDriversByStandin(false);
 		final List<Driver> standinDrivers = componentService.findDriversByStandin(true);
 		final List<Car> cars = componentService.findAllCars();
@@ -276,11 +343,8 @@ public class LeagueServiceImpl implements LeagueService {
 			
 			if (pos.isClassified()) {
 				add(driver.getPointsPerEvent(), result.getRound(), rules.getDriverQualPoints().get(pos.getPosition()));
-				driver.setTotalPoints(driver.getTotalPoints() + rules.getDriverQualPoints().get(pos.getPosition()));
-				add(car.getPointsPerEvent(), result.getRound(), rules.getCarQualPoints().get(pos.getPosition()));				
-				car.setTotalPoints(car.getTotalPoints() + rules.getCarQualPoints().get(pos.getPosition()));				
+				add(car.getPointsPerEvent(), result.getRound(), rules.getCarQualPoints().get(pos.getPosition()));		
 				add(engine.getPointsPerEvent(), result.getRound(), rules.getEngineQualPoints().get(pos.getPosition()));
-				engine.setTotalPoints(engine.getTotalPoints() + rules.getEngineQualPoints().get(pos.getPosition()));
 			}
 	    }
 
@@ -291,23 +355,18 @@ public class LeagueServiceImpl implements LeagueService {
 				Driver driver = getDriver(pos, driverMap, standinDriverMap, result, Session.RACE);
 				
 				if (pos.isClassified()) {
-					add(driver.getPointsPerEvent(), result.getRound(), rules.getDriverRacePoints().get(pos.getPosition()));				
-					driver.setTotalPoints(driver.getTotalPoints() + rules.getDriverRacePoints().get(pos.getPosition()));					
-					add(car.getPointsPerEvent(), result.getRound(), rules.getCarRacePoints().get(pos.getPosition()));				
-					car.setTotalPoints(car.getTotalPoints() + rules.getCarRacePoints().get(pos.getPosition()));				
+					add(driver.getPointsPerEvent(), result.getRound(), rules.getDriverRacePoints().get(pos.getPosition()));					
+					add(car.getPointsPerEvent(), result.getRound(), rules.getCarRacePoints().get(pos.getPosition()));		
 					add(engine.getPointsPerEvent(), result.getRound(), rules.getEngineRacePoints().get(pos.getPosition()));
-					engine.setTotalPoints(engine.getTotalPoints() + rules.getEngineRacePoints().get(pos.getPosition()));
 					
 					if(result.getFastestLapDriver().getNumber() == pos.getDriverNumber()) {
 						driver.setFastestLaps(driver.getFastestLaps() + 1);
-						add(driver.getPointsPerEvent(), result.getRound(), rules.getFastestLapBonus());				
-						driver.setTotalPoints(driver.getTotalPoints() + rules.getFastestLapBonus());
+						add(driver.getPointsPerEvent(), result.getRound(), rules.getFastestLapBonus());
 					}
 					
 					add(numCarsFinished, car.getName(), 1);
 					if(numCarsFinished.get(car.getName()) == 2) {
-						add(car.getPointsPerEvent(), result.getRound(), rules.getBothCarsFinishedBonus());						
-						car.setTotalPoints(car.getTotalPoints() + rules.getBothCarsFinishedBonus());
+						add(car.getPointsPerEvent(), result.getRound(), rules.getBothCarsFinishedBonus());
 						car.setBothCarsFinishBonuses(car.getBothCarsFinishBonuses() + 1);
 					}
 				}
@@ -331,10 +390,10 @@ public class LeagueServiceImpl implements LeagueService {
 				points += team.getEngine().getPointsPerEvent()
 						.get(result.getRound());
 				team.getPointsPerEvent().put(result.getRound(), points);
-				team.setTotalPoints(team.getTotalPoints() + points);
 				teamService.saveTeamNoValidation(team);
 			}
 		}
+		updateTotals();
 		calculateBestTheoreticalTeam(result);
 	}
 	

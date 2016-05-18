@@ -18,6 +18,7 @@ import fantasyf1.repository.LiveResultsRepository;
 import fantasyf1.service.EventService;
 import fantasyf1.service.LeagueService;
 import fantasyf1.service.MailService;
+import fantasyf1.service.TeamService;
 
 @Service
 public class EventServiceImpl implements EventService {
@@ -41,6 +42,8 @@ public class EventServiceImpl implements EventService {
 
 	@Autowired
 	ServiceUtils utils;
+	
+	@Autowired TeamService teamService;
 
 	@Value("${results-refresh-interval}")
 	private long resultRefreshInterval;
@@ -54,7 +57,8 @@ public class EventServiceImpl implements EventService {
 			applyCorrections(result);
 			eventRepo.deleteByRound(round);
 			eventRepo.save(result);
-			leagueService.recalculateAllResults();
+			leagueService.calculateResult(result);
+			leagueService.updateTotals();
 		}
 		return result;
 	}
@@ -77,7 +81,7 @@ public class EventServiceImpl implements EventService {
 		if (res != null) {
 			eventRepo.deleteByRound(round);
 			LOG.info("Deleted result round " + round);
-			leagueService.recalculateAllResults();
+			leagueService.deletePointsForRound(round);
 			return 1;
 		} else {
 			LOG.info("Result round " + round + " does not exist");
@@ -91,7 +95,7 @@ public class EventServiceImpl implements EventService {
 		eventRepo.deleteAll();
 		timeOfLastResultCheck = 0;
 		checkForNewResults(false);
-		leagueService.recalculateAllResults();
+		leagueService.recalculateAllResults(teamService.findAll());
 	}
 
 	@Override
@@ -99,7 +103,9 @@ public class EventServiceImpl implements EventService {
 		LOG.info("Updating results..");
 		timeOfLastResultCheck = 0;
 		if (checkForNewResults(true)) {
-			leagueService.recalculateAllResults();
+			final Iterable<EventResult> itr = eventRepo.findAll();
+			final List<EventResult> results = IteratorUtils.toList(itr.iterator());
+			leagueService.calculateResult(results.get(results.size()-1));
 			return 1;
 		} else {
 			return 0;
