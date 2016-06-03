@@ -120,7 +120,7 @@ public class LeagueServiceImpl implements LeagueService {
 			for (final Driver driver2 : allDrivers) {
 				for (final Driver driver3 : allDrivers) {
 					if (driver1.getNumber() != driver2.getNumber() && driver1.getNumber() != driver3.getNumber() && driver2.getNumber() != driver3.getNumber()) {
-						team.setDrivers(new ArrayList<Driver>());
+						team.setDrivers(new ArrayList<>());
 						team.getDrivers().add(driver1);
 						team.getDrivers().add(driver2);
 						team.getDrivers().add(driver3);
@@ -316,6 +316,18 @@ public class LeagueServiceImpl implements LeagueService {
 			scorer.setTotalPoints(scorer.getTotalPoints() + score);
 		}
 	}
+	
+	private void initialiseComponentsForNewResult(int round, List<Driver> drivers, List<Car> cars, List<Engine> engines) {
+		for (Driver driver : drivers) {
+			driver.getPointsPerEvent().put(round, 0);
+		}
+		for(Car car : cars) {
+			car.getPointsPerEvent().put(round, 0);
+		}
+		for(Engine engine : engines) {
+			engine.getPointsPerEvent().put(round, 0);
+		}
+	}
 
 	@Override
 	public synchronized void calculateResult(final EventResult result) {
@@ -323,6 +335,8 @@ public class LeagueServiceImpl implements LeagueService {
 		final List<Driver> standinDrivers = componentService.findDriversByStandin(true);
 		final List<Car> cars = componentService.findAllCars();
 		final List<Engine> engines = componentService.findAllEngines();
+		
+		initialiseComponentsForNewResult(result.getRound(), drivers, cars, engines);
 		
 		Map<Integer, Driver> driverMap =
 				drivers.stream().collect(Collectors.toMap(Driver::getNumber, Function.identity()));
